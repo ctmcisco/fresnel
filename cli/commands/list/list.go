@@ -25,6 +25,7 @@ import (
 
 	"flag"
 	"github.com/google/fresnel/cli/console"
+	"github.com/dustin/go-humanize"
 	"github.com/google/logger"
 	"github.com/google/subcommands"
 	"github.com/google/winops/storage"
@@ -55,6 +56,10 @@ type listCmd struct {
 	// maxSize is the largest size device to search for in GB. For convenience,
 	// this value is set to 'no limit (0)' by default by flag.
 	maxSize int
+
+	// raw displays a list of devices found with no additional output.
+	// This value is defaulted to false by flag.
+	raw bool
 }
 
 var oneGB = 1073741824
@@ -108,12 +113,15 @@ func (c *listCmd) SetFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.listFixed, "show_fixed", false, "Also display fixed drives.")
 	f.IntVar(&c.minSize, "minimum", 2, "The minimum size [in GB] of drives to search for.")
 	f.IntVar(&c.maxSize, "maximum", 0, "The maximum size [in GB] drives to search for.")
+	f.BoolVar(&c.raw, "raw", false, "Show the device list with no additional output.")
 }
 
 // Execute runs the command and returns an ExitStatus.
 func (c *listCmd) Execute(_ context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 	// Scan for the available drives. Warn that this may take a while.
-	console.Print("Searching for devices. This take up to one minute...\n")
+	if !c.raw {
+		console.Print("Searching for devices. This take up to one minute...\n")
+	}
 	logger.V(1).Info("Searching for devices.")
 	devices, err := search("", uint64(c.minSize*oneGB), uint64(c.maxSize*oneGB), !c.listFixed)
 	if err != nil {
@@ -127,7 +135,18 @@ func (c *listCmd) Execute(_ context.Context, _ *flag.FlagSet, _ ...interface{}) 
 	}
 
 	// Print available devices
-	console.Printf("Available devices for Installer provisioning:\n")
+	if len(available) < 1 {
+		console.Print("No Available devices found\n")
+		return 1
+	}
+
+	if c.raw {
+		for _, device := range available {
+			fmt.Println(device.Identifier(), device.FriendlyName(), humanize.Bytes(device.Size()))
+		}
+		return 0
+	}
+
 	console.PrintDevices(available, os.Stdout)
 
 	// Provide contextual help for next steps.
